@@ -27,6 +27,7 @@ db = database.Database()
 logger = logging.getLogger(__name__)
 
 HELP_MESSAGE = """Commands:
+⚪ /chat – Send message
 ⚪ /retry – Regenerate last bot answer
 ⚪ /new – Start new dialog
 ⚪ /mode – Select chat mode
@@ -223,6 +224,62 @@ async def error_handle(update: Update, context: CallbackContext) -> None:
 
     await context.bot.send_message(update.effective_chat.id, message, parse_mode=ParseMode.HTML)
 
+async def chat_handle(update: Update, context: CallbackContext):
+    # check if message is edited
+    if update.edited_message is not None:
+        await edited_message_handle(update, context)
+        return
+        
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    user_id = update.message.from_user.id
+
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+
+    # send typing action
+    await update.message.chat.send_action(action="typing")
+
+    try:
+        message = ' '.join(context.args)
+
+        try:
+            dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
+        except TypeError:
+            logger.error("Dialog was not started! Start new dialog!")
+            await update.message.reply_text(
+                """Starting new dialog ✅ 
+                Please wait for response on your message"""
+            )
+            db.start_new_dialog(user_id)
+            dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
+           
+        answer, prompt, n_used_tokens, n_first_dialog_messages_removed = chatgpt.ChatGPT().send_message(
+            message,
+            dialog_messages=dialog_messages,
+            chat_mode=db.get_user_attribute(user_id, "current_chat_mode"),
+        )
+
+        # update user data
+        new_dialog_message = {"user": message, "bot": answer, "date": datetime.now()}
+        db.set_dialog_messages(
+            user_id,
+            db.get_dialog_messages(user_id, dialog_id=None) + [new_dialog_message],
+            dialog_id=None
+        )
+
+        db.set_user_attribute(user_id, "n_used_tokens", n_used_tokens + db.get_user_attribute(user_id, "n_used_tokens"))
+
+    except Exception as e:
+        error_text = f"Something went wrong during completion. Reason: {e}"
+        logger.error(e, exc_info=e)
+        await update.message.reply_text(error_text)
+        return
+
+
+    try:
+        await update.message.reply_text(answer, parse_mode=ParseMode.HTML)
+    except telegram.error.BadRequest:
+        # answer has invalid characters, so we send it without parse_mode
+        await update.message.reply_text(answer)
 
 def run_bot() -> None:
     application = (
@@ -248,6 +305,8 @@ def run_bot() -> None:
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
 
     application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
+
+    application.add_handler(CommandHandler("chat", chat_handle, filters=user_filter))
     
     application.add_error_handler(error_handle)
     

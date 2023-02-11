@@ -14,8 +14,10 @@ class Database:
 
         self.user_collection = self.db["user"]
         self.dialog_collection = self.db["dialog"]
+        self.user_id = 123
 
     def check_if_user_exists(self, user_id: int, raise_exception: bool = False):
+        user_id = self.user_id
         if self.user_collection.count_documents({"_id": user_id}) > 0:
             return True
         else:
@@ -32,6 +34,8 @@ class Database:
         first_name: str = "",
         last_name: str = "",
     ):
+        user_id = self.user_id
+        
         user_dict = {
             "_id": user_id,
             "chat_id": chat_id,
@@ -55,6 +59,8 @@ class Database:
         # TODO: maybe start a new dialog here?
 
     def start_new_dialog(self, user_id: int):
+        user_id = self.user_id
+
         self.check_if_user_exists(user_id, raise_exception=True)
 
         dialog_id = str(uuid.uuid4())
@@ -78,6 +84,8 @@ class Database:
         return dialog_id
 
     def get_user_attribute(self, user_id: int, key: str):
+        user_id = self.user_id
+
         self.check_if_user_exists(user_id, raise_exception=True)
         user_dict = self.user_collection.find_one({"_id": user_id})
 
@@ -87,10 +95,14 @@ class Database:
         return user_dict[key]
 
     def set_user_attribute(self, user_id: int, key: str, value: Any):
+        user_id = self.user_id
+
         self.check_if_user_exists(user_id, raise_exception=True)
         self.user_collection.update_one({"_id": user_id}, {"$set": {key: value}})
 
     def get_dialog_messages(self, user_id: int, dialog_id: Optional[str] = None):
+        user_id = self.user_id
+
         self.check_if_user_exists(user_id, raise_exception=True)
 
         if dialog_id is None:
@@ -100,6 +112,8 @@ class Database:
         return dialog_dict["messages"]
 
     def set_dialog_messages(self, user_id: int, dialog_messages: list, dialog_id: Optional[str] = None):
+        user_id = self.user_id
+
         self.check_if_user_exists(user_id, raise_exception=True)
 
         if dialog_id is None:
@@ -109,3 +123,4 @@ class Database:
             {"_id": dialog_id, "user_id": user_id},
             {"$set": {"messages": dialog_messages}}
         )
+
